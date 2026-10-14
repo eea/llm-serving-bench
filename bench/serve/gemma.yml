@@ -1,0 +1,47 @@
+# Server launch config for the Gemma run (2026-08-10).
+#
+# ⚠ THE MODEL ITSELF IS UNKNOWN. Nothing in the raw result files records which
+# Gemma was served — no size, no quantization, no checkpoint id. The files in
+# that run are even named results_gpt_oss_120b_*.json, because the benchmark
+# script was copy-pasted and the output prefix never changed.
+#
+# Until the variant is recovered from the production server, the Gemma column in
+# every table is "some Gemma", and this run cannot be reproduced.
+#
+# TODO:
+#   1. recover the checkpoint + flags from the production server
+#   2. replace TODO below and commit
+#   3. bench/run.sh --model gemma-<size>-<quant> --label "Gemma <size>" \
+#        --base-url http://localhost:9002 --served-model <served-model-name>
+#      (bench/run.sh derives the file prefix from --model, so the mislabelling
+#       cannot recur)
+
+services:
+  gemma:
+    image: vllm/vllm-openai:v0.25.0   # TODO: confirm the server image tag
+    restart: unless-stopped
+    ipc: host
+    shm_size: "60g"
+    ports:
+      - "9002:8000"
+    volumes:
+      - ./data/models:/models
+      - ./data/.cache:/root/.cache
+    command: >
+      --host 0.0.0.0
+      --port 8000
+      --model TODO-org/gemma-<size>-<quant>
+      --max-model-len 262144
+      --gpu-memory-utilization 0.95
+      --enable-chunked-prefill
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=0
+      - CUDA_VISIBLE_DEVICES=0
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

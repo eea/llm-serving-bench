@@ -1,0 +1,45 @@
+# Server launch config for the GPT-OSS 120B run (2026-08-03).
+#
+# ⚠ NOT THE CONFIG THAT WAS USED. The August 2026 run was executed on the
+# production server and its vLLM serve flags were never recorded. This file is a
+# template to fill in before re-running, so that the next run is reproducible.
+#
+# Known: model family gpt-oss-120b, single GPU (GPU 0), bench client image
+# vllm/vllm-openai:v0.25.0. Unknown: quantization, max-model-len,
+# gpu-memory-utilization, chunked-prefill, KV cache dtype, served-model-name.
+#
+# TODO before re-running:
+#   1. set --model to the exact checkpoint (and note its revision hash)
+#   2. record the real flags here, then commit
+#   3. bench/run.sh --model gpt-oss-120b --label "GPT-OSS 120B" \
+#        --base-url http://localhost:9001 --served-model <served-model-name>
+
+services:
+  gpt-oss-120b:
+    image: vllm/vllm-openai:v0.25.0   # TODO: confirm the server image tag
+    restart: unless-stopped
+    ipc: host
+    shm_size: "60g"
+    ports:
+      - "9001:8000"
+    volumes:
+      - ./data/models:/models
+      - ./data/.cache:/root/.cache
+    command: >
+      --host 0.0.0.0
+      --port 8000
+      --model TODO-org/gpt-oss-120b
+      --max-model-len 262144
+      --gpu-memory-utilization 0.95
+      --enable-chunked-prefill
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=0
+      - CUDA_VISIBLE_DEVICES=0
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

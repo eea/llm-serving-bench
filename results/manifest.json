@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "comment": "One entry per benchmark run. Raw JSON files are never edited or renamed; model identity lives HERE, not in file names. Add new runs with `make register RUN_DIR=results/<id>`.",
+  "runs": [
+    {
+      "run_id": "2026-08-03_gpt-oss-120b_a",
+      "model": "gpt-oss-120b",
+      "label": "GPT-OSS 120B",
+      "variant": "not recorded in result files",
+      "date": "2026-08-03",
+      "host": "production server (copied out; not recorded)",
+      "gpu": "GPU 0 (asserted by operator, not recorded in result files)",
+      "vllm_image": "vllm/vllm-openai:v0.25.0 (bench client image; server version not recorded)",
+      "serve_config": "bench/serve/gpt-oss-120b.yml",
+      "bench_flags": "vllm bench serve --dataset-name random --num-prompts 100 (request-rate default: inf)",
+      "repeats": 1,
+      "result_format": "legacy",
+      "notes": "Legacy bench output format: only elapsed_time / num_requests / total_num_tokens / requests_per_second / tokens_per_second. No TTFT, TPOT, ITL or output-token throughput.",
+      "dir": "results/2026-08-03_gpt-oss-120b_a"
+    },
+    {
+      "run_id": "2026-08-04_qwen3.6-27b-fp8_a",
+      "model": "qwen3.6-27b-fp8",
+      "label": "Qwen 27B",
+      "variant": "Qwen/Qwen3.6-27B-FP8 (--quantization fp8, --kv-cache-dtype fp8)",
+      "date": "2026-08-04",
+      "host": "production server (copied out; not recorded)",
+      "gpu": "GPU 0 (CUDA_VISIBLE_DEVICES=0 in serve config)",
+      "vllm_image": "vllm/vllm-openai:v0.25.0",
+      "serve_config": "bench/serve/qwen3.6-27b-fp8.yml",
+      "bench_flags": "vllm bench serve --dataset-name random --num-prompts 100 (request-rate default: inf)",
+      "repeats": 1,
+      "result_format": "modern",
+      "notes": "Only run with full metadata (date, model_id, TTFT/TPOT/ITL percentiles, output throughput). Serve flags recovered from the docker-compose block in the original benchmark.sh.",
+      "dir": "results/2026-08-04_qwen3.6-27b-fp8_a"
+    },
+    {
+      "run_id": "2026-08-10_gemma_a",
+      "model": "gemma",
+      "label": "Gemma",
+      "variant": "UNKNOWN - size and quantization were never recorded",
+      "date": "2026-08-10",
+      "host": "production server (copied out; not recorded)",
+      "gpu": "GPU 0 (asserted by operator, not recorded in result files)",
+      "vllm_image": "vllm/vllm-openai:v0.25.0 (bench client image; server version not recorded)",
+      "serve_config": "bench/serve/gemma.yml",
+      "bench_flags": "vllm bench serve --dataset-name random --num-prompts 100 (request-rate default: inf)",
+      "repeats": 1,
+      "result_format": "legacy",
+      "notes": "Provenance caveat: every file in this run is named results_gpt_oss_120b_*.json (the GPT-OSS script was copied and the output prefix never changed). Values differ from the gpt-oss-120b run, so they are not duplicates, but the model attribution rests on the source directory name only. Fix the prefix in bench/run.sh for future runs.",
+      "dir": "results/2026-08-10_gemma_a"
+    }
+  ],
+  "excluded": [
+    {
+      "path": "results/2026-08-03_gpt-oss-120b_a/results_gpt_oss_120b_gpu0.json",
+      "reason": "Different load: 1000 prompts instead of 100, and the file name carries no in/out lengths. Kept in the tree for reference, excluded from all tables."
+    }
+  ]
+}
