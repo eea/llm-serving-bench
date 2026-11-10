@@ -9,6 +9,7 @@
       "variant": "not recorded in result files",
       "date": "2026-08-03",
       "host": "production server (copied out; not recorded)",
+      "gpus": 1,
       "gpu": "GPU 0 (asserted by operator, not recorded in result files)",
       "vllm_image": "vllm/vllm-openai:v0.25.0 (bench client image; server version not recorded)",
       "serve_config": "bench/serve/gpt-oss-120b.yml",
@@ -25,6 +26,7 @@
       "variant": "Qwen/Qwen3.6-27B-FP8 (--quantization fp8, --kv-cache-dtype fp8)",
       "date": "2026-08-04",
       "host": "production server (copied out; not recorded)",
+      "gpus": 1,
       "gpu": "GPU 0 (CUDA_VISIBLE_DEVICES=0 in serve config)",
       "vllm_image": "vllm/vllm-openai:v0.25.0",
       "serve_config": "bench/serve/qwen3.6-27b-fp8.yml",
@@ -41,6 +43,7 @@
       "variant": "UNKNOWN - size and quantization were never recorded",
       "date": "2026-08-10",
       "host": "production server (copied out; not recorded)",
+      "gpus": 1,
       "gpu": "GPU 0 (asserted by operator, not recorded in result files)",
       "vllm_image": "vllm/vllm-openai:v0.25.0 (bench client image; server version not recorded)",
       "serve_config": "bench/serve/gemma.yml",
@@ -49,6 +52,23 @@
       "result_format": "legacy",
       "notes": "Provenance caveat: every file in this run is named results_gpt_oss_120b_*.json (the GPT-OSS script was copied and the output prefix never changed). Values differ from the gpt-oss-120b run, so they are not duplicates, but the model attribution rests on the source directory name only. Fix the prefix in bench/run.sh for future runs.",
       "dir": "results/2026-08-10_gemma_a"
+    },
+    {
+      "run_id": "2026-11-03_qwen3.8-27b_a",
+      "model": "qwen3.8-27b",
+      "label": "Qwen 3.8 27B (0.32+MTP)",
+      "variant": "Qwen/Qwen3.8-27B-FP8 (FP8 checkpoint)",
+      "date": "2026-11-03",
+      "host": "not recorded",
+      "gpus": 2,
+      "gpu": "2 GPUs, --data-parallel-size 2 (CUDA_VISIBLE_DEVICES=0,1). The 2026-08 runs used ONE GPU - normalise per GPU before comparing.",
+      "vllm_image": "vllm/vllm-openai:v0.32.0",
+      "serve_config": "bench/serve/qwen3.8-27b.yml",
+      "bench_flags": "vllm bench serve --dataset-name random --num-prompts 100 --backend vllm (endpoint_type=vllm -> /v1/completions; the 2026-08 runs used --backend openai)",
+      "repeats": 1,
+      "result_format": "modern",
+      "notes": "PROVISIONAL n=1, and NOT a like-for-like comparison: this run used TWO GPUs (--data-parallel-size 2) where every 2026-08 run used one. Aggregate mean total tok/s 5,545 -> 8,329 (+50%), but per GPU that is -27% on average (-11% to -39%). Speculative decoding is on (method mtp, num_speculative_tokens 3; acceptance length 2.17-3.21, acceptance rate 39-74%), so TPOT is per accepted token and median ITL is per step: step time rose 25-43% while TPOT fell 41-64%. Prefill is ~1.9x faster in aggregate, which is roughly what DP=2 alone predicts. --kv-cache-dtype fp8 was dropped vs the 2026-08 config (KV bytes per token roughly double), and in-flight decode concurrency fell from ~84 to ~55 aggregate (~27 per DP rank); --max_num_seqs 969 rules out a sequence-count cap, so the limit is per-rank residency, not the scheduler knob. max_output_tokens_per_s in these files is broken (below average output_throughput in 13/16 files) and is not ingested.",
+      "dir": "results/2026-11-03_qwen3.8-27b_a"
     }
   ],
   "excluded": [

@@ -32,10 +32,12 @@ END = "<!-- END GENERATED:{name} -->"
 BLOCKS = ["tldr", "recommend", "summary", "heatmaps", "head2head-tok",
           "head2head-decode", "head2head-req", "speedup", "latency", "gaps"]
 
-NUMERIC = {"in_len": int, "out_len": int, "prompts": int, "repeats": int}
+NUMERIC = {"in_len": int, "out_len": int, "prompts": int, "repeats": int, "gpus": int}
 FLOATS = ["elapsed_s", "req_s", "total_tok_s", "out_tok_s", "ttft_mean_ms",
           "ttft_p50_ms", "ttft_p99_ms", "tpot_mean_ms", "tpot_p99_ms",
-          "itl_mean_ms", "itl_p99_ms"]
+          "itl_mean_ms", "itl_p99_ms",
+          # carried through aggregation so figures/analysis can see spec decode
+          "itl_median_ms", "spec_accept_len", "spec_accept_rate"]
 
 
 # --------------------------------------------------------------------------- #
@@ -169,11 +171,12 @@ def table(header, aligns, body):
 # --------------------------------------------------------------------------- #
 # blocks
 # --------------------------------------------------------------------------- #
-def block_tldr(agg: dict, labels: dict) -> str:
+def block_tldr(agg: dict, labels: dict, manifest: dict) -> str:
     res = winners(agg, "total_tok_s")
     total = res["scenarios"]
     order = sorted(res["wins"].items(), key=lambda kv: -kv[1])
     win_str = ", ".join(f"**{labels[m]}** {w}/{total}" for m, w in order)
+    gpus = gpus_of(manifest)
 
     peak = max(((v["total_tok_s"], k[1], k[2], k[0]) for k, v in agg.items()
                 if v["total_tok_s"] is not None))
@@ -182,9 +185,16 @@ def block_tldr(agg: dict, labels: dict) -> str:
     lines = [
         f"- **Wins on total token throughput ({total} scenarios):** {win_str}. "
         f"{res['ties']}/{total} scenarios are decided by under 5% — treat those as ties.",
-        f"- **Peak total throughput:** **{f0(peak[0])} tok/s** by {labels[peak[3]]} at "
-        f"in{peak[1]}/out{peak[2]} — prefill-heavy, since input tokens dominate this metric.",
     ]
+    if len(set(gpus.values())) > 1:
+        by_gpu = sorted(gpus.items(), key=lambda kv: -kv[1])
+        detail = ", ".join(f"{labels[m]} {n}" for m, n in by_gpu if n > min(gpus.values()))
+        lines.append(
+            f"- **The runs did not use the same hardware** ({detail} GPU(s); others used "
+            f"{min(gpus.values())}) — compare **Avg tok/s / GPU**, not Avg tok/s.")
+    lines.append(
+        f"- **Peak total throughput:** **{f0(peak[0])} tok/s** by {labels[peak[3]]} at "
+        f"in{peak[1]}/out{peak[2]} — prefill-heavy, since input tokens dominate this metric.")
     if decode:
         d = max(decode)
         lines.append(
@@ -193,8 +203,13 @@ def block_tldr(agg: dict, labels: dict) -> str:
     else:
         lines.append("- **Peak decode throughput:** not measurable — no run reports "
                      "`output_throughput` (see data gaps).")
-    lines.append("- **The leader flips with the input/output ratio**, so pick per workload "
-                 "(table below) rather than per model name.")
+    if order and order[0][1] == total:
+        lines.append("- **One run wins every scenario** — read that as a *stack* result, not "
+                     "a model result: see the caveat under this list and the Data gaps "
+                     "section for what else changed.")
+    else:
+        lines.append("- **The leader flips with the input/output ratio**, so pick per workload "
+                     "(table below) rather than per model name.")
     return "\n".join(lines)
 
 
@@ -247,15 +262,23 @@ def block_recommend(agg: dict, labels: dict) -> str:
                  ["", "<", ""], body)
 
 
-def block_summary(agg: dict, labels: dict) -> str:
+def gpus_of(manifest: dict) -> dict:
+    """model -> GPU count, from the manifest (default 1). Normalising throughput
+    per GPU is the only way to compare runs that used different hardware."""
+    return {r["model"]: r.get("gpus", 1) for r in manifest["runs"]}
+
+
+def block_summary(agg: dict, labels: dict, manifest: dict) -> str:
     res = winners(agg, "total_tok_s")
     total = res["scenarios"]
+    gpus = gpus_of(manifest)
     body = []
     for model in sorted(models_of(agg), key=lambda m: -mean_of(agg, m, "total_tok_s")):
         cells = cells_of(agg, model)
         body.append([
             f"**{labels[model]}**",
             f0(mean_of(agg, model, "total_tok_s")),
+            f0(mean_of(agg, model, "total_tok_s") / gpus.get(model, 1)),
             f2(mean_of(agg, model, "req_s")),
             f0(max(c["total_tok_s"] for c in cells if c["total_tok_s"] is not None)),
             f2(max(c["req_s"] for c in cells if c["req_s"] is not None)),
@@ -263,9 +286,9 @@ def block_summary(agg: dict, labels: dict) -> str:
             f"{res['wins'].get(model, 0)} / {total}",
             str(max(c["n"] for c in cells)),
         ])
-    return table(["Model", "Avg tok/s", "Avg req/s", "Peak tok/s", "Peak req/s",
-                  "Avg out tok/s", "Scenarios won", "Runs / scenario"],
-                 ["", "---:", "---:", "---:", "---:", "---:", "---:", "---:"], body)
+    return table(["Model", "Avg tok/s", "Avg tok/s / GPU", "Avg req/s", "Peak tok/s",
+                  "Peak req/s", "Avg out tok/s", "Scenarios won", "Runs / scenario"],
+                 ["", "---:", "---:", "---:", "---:", "---:", "---:", "---:", "---:"], body)
 
 
 def block_heatmaps(agg: dict, labels: dict) -> str:
@@ -348,6 +371,15 @@ def block_gaps(agg: dict, labels: dict, manifest: dict) -> str:
         if "unknown" in run.get("variant", "").lower():
             gaps.append(f"**{labels[model]}**: model variant (size / quantization) never "
                         f"recorded — the run is not reproducible")
+        if "not recorded" in run.get("serve_config", "").lower():
+            gaps.append(f"**{labels[model]}**: serve flags not recorded — the run cannot be "
+                        f"reproduced, and its win cannot be attributed to the model rather "
+                        f"than the configuration")
+        counts = {r.get("gpus", 1) for r in manifest["runs"]}
+        if len(counts) > 1 and run.get("gpus", 1) != min(counts):
+            gaps.append(f"**{labels[model]}**: ran on **{run.get('gpus')} GPUs** while other "
+                        f"runs used {min(counts)} — its throughput is not comparable without "
+                        f"dividing by GPU count (see the Avg tok/s / GPU column)")
         if run.get("repeats", 1) < 2:
             gaps.append(f"**{labels[model]}**: 1 run per scenario — no variance estimate, "
                         f"gaps under ~5% are noise")
@@ -364,7 +396,7 @@ def block_gaps(agg: dict, labels: dict, manifest: dict) -> str:
 # --------------------------------------------------------------------------- #
 # machine-readable twin of the README
 # --------------------------------------------------------------------------- #
-def leaderboard_json(agg: dict, labels: dict) -> dict:
+def leaderboard_json(agg: dict, labels: dict, manifest: dict) -> dict:
     res = winners(agg, "total_tok_s")
     models = models_of(agg)
     return {
@@ -372,8 +404,10 @@ def leaderboard_json(agg: dict, labels: dict) -> dict:
         "scenarios": res["scenarios"],
         "ties_under_5pct": res["ties"],
         "wins_total_tok_s": res["wins"],
-        "models": [{"model": m, "label": labels[m],
+        "models": [{"model": m, "label": labels[m], "gpus": gpus_of(manifest).get(m, 1),
                     "avg_total_tok_s": round(mean_of(agg, m, "total_tok_s"), 1),
+                    "avg_total_tok_s_per_gpu": round(mean_of(agg, m, "total_tok_s")
+                                                     / gpus_of(manifest).get(m, 1), 1),
                     "avg_req_s": round(mean_of(agg, m, "req_s"), 3),
                     "avg_out_tok_s": (round(mean_of(agg, m, "out_tok_s"), 1)
                                       if mean_of(agg, m, "out_tok_s") is not None else None)}
@@ -395,9 +429,9 @@ def leaderboard_json(agg: dict, labels: dict) -> dict:
 def render(agg: dict, manifest: dict) -> dict:
     labels = {r["model"]: r["label"] for r in manifest["runs"]}
     return {
-        "tldr": block_tldr(agg, labels),
+        "tldr": block_tldr(agg, labels, manifest),
         "recommend": block_recommend(agg, labels),
-        "summary": block_summary(agg, labels),
+        "summary": block_summary(agg, labels, manifest),
         "heatmaps": block_heatmaps(agg, labels),
         "head2head-tok": block_head2head(agg, labels, "total_tok_s"),
         "head2head-decode": block_head2head(agg, labels, "out_tok_s"),
@@ -432,7 +466,8 @@ def main() -> int:
     original = README.read_text()
     updated = inject(original, blocks)
     (DATA / "leaderboard.json").write_text(
-        json.dumps(leaderboard_json(agg, {r["model"]: r["label"] for r in manifest["runs"]}),
+        json.dumps(leaderboard_json(agg, {r["model"]: r["label"] for r in manifest["runs"]},
+                                     manifest),
                    indent=2) + "\n")
     if args.check:
         if updated != original:

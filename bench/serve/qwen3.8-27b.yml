@@ -1,0 +1,67 @@
+# Server launch config for the 2026-11-03 Qwen 3.8 27B run
+# (results/2026-11-03_qwen3.8-27b_a).
+#
+# Supplied by the operator after the run was imported — the run itself recorded
+# none of this, which is why it was registered with serve_config: NOT RECORDED.
+#
+# !! THIS RUN USED TWO GPUs. The 2026-08 runs used one. !!
+#   --data-parallel-size 2  +  CUDA_VISIBLE_DEVICES=0,1
+# Every throughput number in this run is therefore 2x the hardware of the
+# baseline. Normalise per GPU before comparing (see docs/runs/2026-11.md).
+#
+#   docker compose -f bench/serve/qwen3.8-27b.yml up -d
+#   bench/run.sh --model qwen3.8-27b --label "Qwen 3.8 27B (0.32+MTP)" \
+#     --base-url http://localhost:9000 --served-model qwen/qwen3.8-27b
+
+services:
+  qwen:
+    image: vllm/vllm-openai:v0.32.0
+    restart: unless-stopped
+    ipc: host
+    shm_size: "60g"
+    ports:
+      - "9000:8000"
+    env_file: ./.env
+    volumes:
+      - ./data/models:/models
+      - ./data/.cache:/root/.cache
+    command: >
+      --host 0.0.0.0
+      --port 8000
+      --model Qwen/Qwen3.8-27B-FP8
+      --served-model-name qwen/qwen3.8-27b
+      --max-model-len 262144
+      --max_num_seqs 969
+      --gpu-memory-utilization 0.95
+      --data-parallel-size 2
+      --enable-auto-tool-choice
+      --tool-call-parser qwen3_coder
+      --reasoning-parser qwen3
+      --mm-encoder-tp-mode data
+      --speculative-config "{\"method\":\"mtp\",\"num_speculative_tokens\":3}"
+      --enable-prompt-tokens-details
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - CUDA_VISIBLE_DEVICES=0,1
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+# Differences vs bench/serve/qwen3.6-27b-fp8.yml (the 2026-08 baseline) that
+# matter when reading the two runs side by side:
+#
+#   flag                        2026-08              2026-11            effect
+#   GPUs                        1                    2 (DP=2)           ~2x raw capacity
+#   --kv-cache-dtype fp8        present              ABSENT             ~2x KV bytes/token
+#                                                                        -> fewer sequences resident
+#   --quantization fp8          present              absent (FP8 ckpt)  equivalent
+#   --enable-chunked-prefill    explicit             default in vLLM v1 equivalent
+#   --speculative-config        absent               mtp, 3 tokens      changes TPOT/ITL semantics
+#   --max_num_seqs              default              969                not the concurrency limit
+#   --reasoning-parser qwen3    absent               present            reasoning tokens parsed out
+#   --trust_remote_code         present              absent             n/a for this checkpoint
