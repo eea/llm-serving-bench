@@ -49,6 +49,22 @@
       "result_format": "legacy",
       "notes": "Provenance caveat: every file in this run is named results_gpt_oss_120b_*.json (the GPT-OSS script was copied and the output prefix never changed). Values differ from the gpt-oss-120b run, so they are not duplicates, but the model attribution rests on the source directory name only. Fix the prefix in bench/run.sh for future runs.",
       "dir": "results/2026-08-10_gemma_a"
+    },
+    {
+      "run_id": "2026-11-03_qwen3.8-27b_a",
+      "model": "qwen3.8-27b",
+      "label": "Qwen 3.8 27B (0.32+MTP)",
+      "variant": "qwen/qwen3.8-27b (model_id recorded in every file); quantization not recorded",
+      "date": "2026-11-03",
+      "host": "not recorded",
+      "gpu": "single GPU, asserted by operator, not recorded in result files",
+      "vllm_image": "not recorded - operator reports a vLLM 0.32 server; bench client image newer than v0.25.0, tag not captured",
+      "serve_config": "NOT RECORDED - must be recovered from the deployment (see docs/caveats.md)",
+      "bench_flags": "vllm bench serve --dataset-name random --num-prompts 100 --backend vllm (endpoint_type=vllm -> /v1/completions; the 2026-08 runs used --backend openai)",
+      "repeats": 1,
+      "result_format": "modern",
+      "notes": "PROVISIONAL n=1. Three things changed at once vs 2026-08-04: model (3.6 -> 3.8), engine (0.2x -> 0.32), and speculative decoding is now active (3 draft tokens, acceptance length 2.17-3.21, acceptance rate 39-74%). The decode gain is spec decode, not the engine: median ITL per step ROSE 25-43% while TPOT per accepted token fell 41-64%. Prefill gain (~1.9x, TTFT slope 4.11 -> ~1.6-2.2 ms/token) is not spec-decode related. max_output_tokens_per_s in these files is broken (below average output_throughput in 13/16 files) and is deliberately not ingested.",
+      "dir": "results/2026-11-03_qwen3.8-27b_a"
     }
   ],
   "excluded": [
