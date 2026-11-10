@@ -35,7 +35,9 @@ BLOCKS = ["tldr", "recommend", "summary", "heatmaps", "head2head-tok",
 NUMERIC = {"in_len": int, "out_len": int, "prompts": int, "repeats": int}
 FLOATS = ["elapsed_s", "req_s", "total_tok_s", "out_tok_s", "ttft_mean_ms",
           "ttft_p50_ms", "ttft_p99_ms", "tpot_mean_ms", "tpot_p99_ms",
-          "itl_mean_ms", "itl_p99_ms"]
+          "itl_mean_ms", "itl_p99_ms",
+          # carried through aggregation so figures/analysis can see spec decode
+          "itl_median_ms", "spec_accept_len", "spec_accept_rate"]
 
 
 # --------------------------------------------------------------------------- #
@@ -348,6 +350,10 @@ def block_gaps(agg: dict, labels: dict, manifest: dict) -> str:
         if "unknown" in run.get("variant", "").lower():
             gaps.append(f"**{labels[model]}**: model variant (size / quantization) never "
                         f"recorded — the run is not reproducible")
+        if "not recorded" in run.get("serve_config", "").lower():
+            gaps.append(f"**{labels[model]}**: serve flags not recorded — the run cannot be "
+                        f"reproduced, and its win cannot be attributed to the model rather "
+                        f"than the configuration")
         if run.get("repeats", 1) < 2:
             gaps.append(f"**{labels[model]}**: 1 run per scenario — no variance estimate, "
                         f"gaps under ~5% are noise")

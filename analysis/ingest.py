@@ -32,6 +32,8 @@ COLUMNS = [
     "elapsed_s", "req_s", "total_tok_s", "out_tok_s", "out_tok_s_source",
     "ttft_mean_ms", "ttft_p50_ms", "ttft_p99_ms",
     "tpot_mean_ms", "tpot_p99_ms", "itl_mean_ms", "itl_p99_ms",
+    # speculative decoding: None unless the server ran with a draft method
+    "itl_median_ms", "spec_accept_len", "spec_accept_rate",
 ]
 
 SCENARIO_RE = re.compile(r"in(\d+)_out(\d+)")
@@ -80,6 +82,17 @@ def normalise(run: dict, path: Path, payload: dict) -> dict:
             "tpot_p99_ms": payload.get("p99_tpot_ms"),
             "itl_mean_ms": payload.get("mean_itl_ms"),
             "itl_p99_ms": payload.get("p99_itl_ms"),
+            # median ITL is the honest per-step time; mean ITL is inflated by
+            # chunked-prefill stalls (p99 ~660 ms in short-output runs).
+            "itl_median_ms": payload.get("median_itl_ms"),
+            # Speculative decoding changes what TPOT and ITL mean: one step emits
+            # spec_accept_len tokens, so TPOT = ITL / spec_accept_len. A run with
+            # spec decode is NOT comparable to one without it on either metric.
+            # max_output_tokens_per_s is deliberately NOT ingested: it is broken
+            # in the vLLM 0.32 output (below average output_throughput in 13 of
+            # 16 files) - see docs/caveats.md.
+            "spec_accept_len": payload.get("spec_decode_acceptance_length"),
+            "spec_accept_rate": payload.get("spec_decode_acceptance_rate"),
         }
         if payload.get("failed"):
             raise IngestError(f"{path}: {payload['failed']} failed requests")
@@ -96,6 +109,7 @@ def normalise(run: dict, path: Path, payload: dict) -> dict:
             "ttft_mean_ms": None, "ttft_p50_ms": None, "ttft_p99_ms": None,
             "tpot_mean_ms": None, "tpot_p99_ms": None,
             "itl_mean_ms": None, "itl_p99_ms": None,
+            "itl_median_ms": None, "spec_accept_len": None, "spec_accept_rate": None,
         }
 
     # out_tok_s is exactly derivable when the legacy format omits it:

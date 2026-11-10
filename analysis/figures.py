@@ -134,7 +134,66 @@ def main() -> int:
     fig.savefig(OUT / "decode_throughput.png", dpi=140)
     plt.close(fig)
 
-    print(f"wrote 5 figures to {OUT.relative_to(ROOT)}/")
+    # 6. decode concurrency and speculative decoding -------------------------
+    # Only runs whose result format reports TPOT can be decomposed; legacy runs
+    # are skipped rather than guessed at.
+    modern = [m for m in models
+              if all(agg[(m, i, o)]["tpot_mean_ms"] for i in ins for o in outs)]
+    if modern:
+        scen = [(i, o) for i in ins for o in outs]
+        fig, axes = plt.subplots(1, 2, figsize=(13, 4.6))
+        w = 0.8 / len(modern)
+        ax = axes[0]
+        for k, model in enumerate(modern):
+            off = (k - (len(modern) - 1) / 2) * w
+            ys = [agg[(model, i, o)]["out_tok_s"] * agg[(model, i, o)]["tpot_mean_ms"] / 1000
+                  for i, o in scen]
+            ax.bar([n + off for n in range(len(scen))], ys, width=w, label=labels[model])
+        ax.axhline(100, color="crimson", ls=":", lw=1.2)
+        ax.text(0, 101, "100 requests fired at once", color="crimson", fontsize=8)
+        ax.set_ylim(0, 128)
+        ax.legend(fontsize=7, loc="upper right")
+        ax.set_xticks(range(len(scen)), [f"in{i}/out{o}" for i, o in scen],
+                      rotation=60, ha="right", fontsize=7)
+        ax.set_ylabel("requests generating at the same instant")
+        ax.set_title("In-flight decode concurrency = out_tok_s x TPOT\n"
+                     "below 100 means the scheduler, not the client, is the limit", fontsize=10)
+        ax.legend(fontsize=7)
+
+        ax = axes[1]
+        longest = max(outs)
+        w2 = 0.8 / (2 * len(modern))
+        for k, model in enumerate(modern):
+            for j, (metric, name, alpha) in enumerate([("tpot_mean_ms", "TPOT", 1.0),
+                                                       ("itl_median_ms", "median ITL", 0.55)]):
+                ys = [agg[(model, i, longest)][metric] for i in ins]
+                off = (2 * k + j - (2 * len(modern) - 1) / 2) * w2
+                ax.bar([n + off for n in range(len(ins))], ys, width=w2,
+                       color=f"C{k}" if j == 0 else f"C{k}", alpha=alpha,
+                       hatch="" if j == 0 else "//",
+                       label=f"{labels[model]} - {name}")
+        for n, i in enumerate(ins):
+            al = agg[(modern[-1], i, longest)]["spec_accept_len"]
+            if al:
+                top = max(agg[(m, i, longest)]["itl_median_ms"] or 0 for m in modern)
+                ax.text(n, top + 2, f"x{al:.2f} tok/step", ha="center",
+                        fontsize=8, color="darkorange", fontweight="bold")
+        ax.set_ylim(0, 62)
+        ax.set_xticks(range(len(ins)), [f"in {i}" for i in ins])
+        ax.set_xlabel(f"input tokens (all scenarios with out={longest})")
+        ax.set_ylabel("ms")
+        ax.set_title("TPOT is per accepted token, median ITL is per step.\n"
+                     "With spec decode a step gets slower but emits x tok/step - the two\n"
+                     "are not comparable across runs unless acceptance is shown", fontsize=10)
+        ax.legend(fontsize=7, ncol=2, loc="upper center", bbox_to_anchor=(0.5, -0.24))
+        fig.tight_layout()
+        fig.savefig(OUT / "decode_concurrency_and_spec_decode.png", dpi=140)
+        plt.close(fig)
+        n_figures = 6
+    else:
+        n_figures = 5
+
+    print(f"wrote {n_figures} figures to {OUT.relative_to(ROOT)}/")
     return 0
 
 

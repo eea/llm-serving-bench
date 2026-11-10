@@ -23,6 +23,8 @@ One row = one (run, input length, output length) measurement.
 | `ttft_mean_ms` / `ttft_p50_ms` / `ttft_p99_ms` | time to first token | `modern` format only |
 | `tpot_mean_ms` / `tpot_p99_ms` | time per output token | meaningless for very short outputs (prefill interference) |
 | `itl_mean_ms` / `itl_p99_ms` | inter-token latency | `modern` format only |
+| `itl_median_ms` | median inter-token latency = time per engine **step** | `modern` only; the mean is inflated by chunked-prefill stalls (p99 ≈ 660 ms at short outputs) |
+| `spec_accept_len` / `spec_accept_rate` | mean tokens accepted per speculative step / draft acceptance rate | `None` when the server ran without speculative decoding — **required context for any TPOT or ITL comparison** |
 
 ## Format detection
 
@@ -38,6 +40,14 @@ One row = one (run, input length, output length) measurement.
 3. `req_s == prompts / elapsed_s` (within 1e-6).
 4. `modern` runs must report `failed == 0`.
 5. One file per (run, in_len, out_len) — duplicates are an error, not averaged.
+
+## Deliberately not ingested
+
+| Raw key | Why |
+|---|---|
+| `max_output_tokens_per_s` | broken in the vLLM 0.32 output: near-constant 2,150–2,350 and **below** the average `output_throughput` in 13 of 16 files in `2026-11-03_qwen3.8-27b_a`. Quoting it would be wrong. |
+| `latencies`, `queue_times` | per-request arrays, ~100 floats per file; they would bloat the canonical table. Aggregate queueing is already visible as the TTFT intercept. |
+| `spec_decode_num_drafts`, `_draft_tokens`, `_accepted_tokens`, `_per_position_acceptance_rates` | derivable from `spec_accept_len` / `spec_accept_rate`; kept in the raw files. |
 
 ## Metric warning
 
