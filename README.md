@@ -17,19 +17,22 @@ hand-editing them is a CI failure (`make check`).
 
 <!-- BEGIN GENERATED:tldr -->
 - **Wins on total token throughput (16 scenarios):** **Qwen 3.8 27B (0.32+MTP)** 16/16. 0/16 scenarios are decided by under 5% — treat those as ties.
+- **The runs did not use the same hardware** (Qwen 3.8 27B (0.32+MTP) 2 GPU(s); others used 1) — compare **Avg tok/s / GPU**, not Avg tok/s.
 - **Peak total throughput:** **18,051 tok/s** by Qwen 3.8 27B (0.32+MTP) at in2048/out128 — prefill-heavy, since input tokens dominate this metric.
 - **Peak decode throughput:** **4,171 output tok/s** by Qwen 3.8 27B (0.32+MTP) at in128/out2045 — the only metric that isolates generation speed.
-- **The leader flips with the input/output ratio**, so pick per workload (table below) rather than per model name.
+- **One run wins every scenario** — read that as a *stack* result, not a model result: see the caveat under this list and the Data gaps section for what else changed.
 <!-- END GENERATED:tldr -->
 
-> ⚠️ **The 2026-11 run is not a clean model comparison.** `Qwen 3.8 27B (0.32+MTP)`
-> differs from `Qwen 27B` in **three things simultaneously**: the checkpoint
-> (3.6 → 3.8), the engine (vLLM 0.2x → 0.32), and **speculative decoding, which is
-> now active** (3 draft tokens, acceptance length 2.17–3.21). Decomposing it: the
-> prefill gain (~1.9×, TTFT slope 4.11 → ~1.6–2.2 ms per input token) is not
-> spec-decode related, while **the entire decode gain is spec decode** — median
-> ITL per step *rose* 25–43 % while TPOT per accepted token *fell* 41–64 %. It is
-> also n=1 with **no recorded serve flags**, which breaks rule 3 below. Full write-up:
+> ⚠️ **The 2026-11 run is not a clean model comparison — it used two GPUs.**
+> `Qwen 3.8 27B (0.32+MTP)` differs from `Qwen 27B` in **four things at once**:
+> **GPU count (1 → 2, `--data-parallel-size 2`)**, checkpoint (3.6 → 3.8), engine
+> (vLLM 0.2x → 0.32.0), and **speculative decoding, which is now on** (MTP, 3 draft
+> tokens, acceptance length 2.17–3.21). Read the two numbers separately: **as
+> deployed the service is ~50 % faster and TTFT roughly halves; per GPU it is
+> ~27 % slower** (see the *Avg tok/s / GPU* column below). The aggregate prefill
+> gain (~1.9×) is about what DP=2 alone predicts, and **the entire decode gain is
+> speculative decoding** — median ITL per step *rose* 25–43 % while TPOT per
+> accepted token *fell* 41–64 %. Full write-up:
 > [docs/runs/2026-11.md](docs/runs/2026-11.md).
 
 ---
@@ -50,12 +53,12 @@ hand-editing them is a CI failure (`make check`).
 ## Summary statistics
 
 <!-- BEGIN GENERATED:summary -->
-| Model | Avg tok/s | Avg req/s | Peak tok/s | Peak req/s | Avg out tok/s | Scenarios won | Runs / scenario |
-|---|---|---|---|---|---|---|---|
-| **Qwen 3.8 27B (0.32+MTP)** | 8,329 | 6.92 | 18,051 | 25.16 | 3,189 | 16 / 16 | 1 |
-| **GPT-OSS 120B** | 6,093 | 4.60 | 15,372 | 11.79 | 2,229 | 0 / 16 | 1 |
-| **Qwen 27B** | 5,545 | 4.94 | 10,488 | 20.53 | 2,240 | 0 / 16 | 1 |
-| **Gemma** | 2,424 | 2.31 | 3,571 | 10.92 | 1,062 | 0 / 16 | 1 |
+| Model | Avg tok/s | Avg tok/s / GPU | Avg req/s | Peak tok/s | Peak req/s | Avg out tok/s | Scenarios won | Runs / scenario |
+|---|---|---|---|---|---|---|---|---|
+| **Qwen 3.8 27B (0.32+MTP)** | 8,329 | 4,164 | 6.92 | 18,051 | 25.16 | 3,189 | 16 / 16 | 1 |
+| **GPT-OSS 120B** | 6,093 | 6,093 | 4.60 | 15,372 | 11.79 | 2,229 | 0 / 16 | 1 |
+| **Qwen 27B** | 5,545 | 5,545 | 4.94 | 10,488 | 20.53 | 2,240 | 0 / 16 | 1 |
+| **Gemma** | 2,424 | 2,424 | 2.31 | 3,571 | 10.92 | 1,062 | 0 / 16 | 1 |
 <!-- END GENERATED:summary -->
 
 ---
@@ -299,11 +302,18 @@ Baseline for every ratio is **Gemma** (slowest average total throughput). Values
 - **Acceptance rates from a `random` dataset are optimistic.** 39–74 % acceptance
   here comes from random token prompts under greedy decoding; real chat/code
   traffic accepts less, so the decode gain will shrink in production.
+- **Throughput must be normalised per GPU.** The 2026-11 run used
+  `--data-parallel-size 2`; every 2026-08 run used one GPU. Aggregate mean
+  8,329 tok/s is **4,165 tok/s per GPU** against the old run's 5,545 — i.e. −27 %
+  per GPU. The summary table carries an `Avg tok/s / GPU` column; the GPU count
+  lives in `results/manifest.json` under `gpus`.
 - **Concurrency is part of the result, not a constant.** In-flight decode
-  concurrency (`out_tok_s × TPOT`) was ~84 avg (up to 99) in 2026-08 and ~55
-  (pinned in a 49–58 band) in 2026-11. A 2.4× per-token win multiplied by a
-  0.66× concurrency loss yields ~1.4× — so the throughput gap is *understated*
-  relative to per-token speed, and the scheduler limit is unexplained.
+  concurrency (`out_tok_s × TPOT`) was ~84 avg (up to 99) on the single 2026-08
+  GPU and ~55 aggregate in 2026-11 — about **27 per DP rank**. A 2.4× per-token
+  win multiplied by a much smaller resident batch lands at ~1.4× aggregate. The
+  earlier guess (`max_num_seqs`) is ruled out — that is 969. The live candidates
+  are KV residency (`--kv-cache-dtype fp8` was dropped, so KV bytes per token
+  roughly double) and MTP's extra draft slots.
 - **These are saturation runs.** 100 requests are fired at once
   (`--request-rate inf`), so the numbers describe throughput at the concurrency
   ceiling, not latency under a target SLO.
@@ -325,7 +335,7 @@ Full definitions: [`analysis/schema.md`](analysis/schema.md) and
 - **Gemma**: `out_tok_s` is **derived** arithmetic (`total_tok_s × out/(in+out)`), not measured by the bench — rankings are unaffected, the absolute value is unverified
 - **Gemma**: model variant (size / quantization) never recorded — the run is not reproducible
 - **Gemma**: 1 run per scenario — no variance estimate, gaps under ~5% are noise
-- **Qwen 3.8 27B (0.32+MTP)**: serve flags not recorded — the run cannot be reproduced, and its win cannot be attributed to the model rather than the configuration
+- **Qwen 3.8 27B (0.32+MTP)**: ran on **2 GPUs** while other runs used 1 — its throughput is not comparable without dividing by GPU count (see the Avg tok/s / GPU column)
 - **Qwen 3.8 27B (0.32+MTP)**: 1 run per scenario — no variance estimate, gaps under ~5% are noise
 - excluded `results_gpt_oss_120b_gpu0.json`: Different load: 1000 prompts instead of 100, and the file name carries no in/out lengths. Kept in the tree for reference, excluded from all tables.
 <!-- END GENERATED:gaps -->
@@ -378,7 +388,11 @@ make ingest report verify
    repo have no recorded server flags; do not add a third.
 4. **Run at least 3 repeats** for anything you intend to defend in a meeting.
    Everything currently here is n=1.
-5. **Record what actually changed**: vLLM image tag, serve flags, and whether
+5. **Record the hardware**: how many GPUs the server used, in `gpus` in
+   `results/manifest.json`. Throughput across runs with different GPU counts is
+   meaningless until it is divided by GPU count — the summary table does this
+   automatically.
+6. **Record what actually changed**: vLLM image tag, serve flags, and whether
    speculative decoding was on. `analysis/ingest.py` captures
    `spec_accept_len` / `spec_accept_rate` when the bench reports them, but the
    engine version and the draft method only live in the manifest — a run without

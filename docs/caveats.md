@@ -9,7 +9,7 @@ Read this before quoting any number from this repo.
 | 2026-08-03 GPT-OSS 120B | asserted by directory name | **not recorded** | legacy (throughput only) |
 | 2026-08-04 Qwen 27B FP8 | recorded in the files (`model_id`) | recorded (recovered into `bench/serve/`) | modern (full latency + decode) |
 | 2026-08-10 Gemma | **unknown variant** | **not recorded** | legacy (throughput only) |
-| 2026-11-03 Qwen 3.8 27B | recorded in the files (`model_id: qwen/qwen3.8-27b`) | **not recorded** | modern (full latency + decode + spec decode) |
+| 2026-11-03 Qwen 3.8 27B | recorded in the files (`model_id: qwen/qwen3.8-27b`) | recorded **after the fact** (operator supplied `bench/serve/qwen3.8-27b.yml`) | modern (full latency + decode + spec decode) |
 
 - The raw files were copied off a production server; host, driver and GPU model
   were never captured.
@@ -24,12 +24,12 @@ Read this before quoting any number from this repo.
 - `results/2026-08-03_gpt-oss-120b_a/results_gpt_oss_120b_gpu0.json` (1000
   prompts, no in/out lengths in the name) is excluded from all tables via the
   manifest. It is kept for reference.
-- **The 2026-11 Qwen run has no recorded serve config.** No `max_num_seqs`,
-  `max_num_batched_tokens`, `--kv-cache-dtype`, `--gpu-memory-utilization` and no
-  `--speculative-config` (the draft method is only inferable from the reported
-  acceptance stats: 3 draft tokens per step). It is the second run in this repo
-  with unaudited flags, which is exactly what `README.md` rule 3 warns against.
-  Recover it from the deployment before quoting the run as a model upgrade.
+- **The 2026-11 run was imported with no recorded configuration at all** — no
+  `_env.txt`, no image tag, no GPU count. The compose file was recovered from the
+  deployment afterwards and committed as `bench/serve/qwen3.8-27b.yml`. That is the
+  second run in this repo whose provenance had to be reconstructed after the fact,
+  which is exactly what `README.md` rule 3/4 warn against: run `bench/run.sh` and it
+  captures this automatically.
 
 ## Comparability
 
@@ -42,23 +42,26 @@ Read this before quoting any number from this repo.
   at different times of day on a production box — background load was not
   controlled or recorded.
 
-## The 2026-11 Qwen run is confounded three ways
+## The 2026-11 Qwen run is confounded four ways
 
-`Qwen 3.8 27B (0.32+MTP)` vs `Qwen 27B` changes **checkpoint** (3.6 → 3.8),
-**engine** (vLLM 0.2x → 0.32) and **speculative decoding** (off → on, 3 draft
-tokens) at the same time. The bench client changed too (`--backend openai` →
-`--backend vllm`, i.e. chat-completions → completions). Therefore:
+`Qwen 3.8 27B (0.32+MTP)` vs `Qwen 27B` changes **GPU count** (1 → 2,
+`--data-parallel-size 2`), **checkpoint** (3.6 → 3.8), **engine** (vLLM 0.2x →
+0.32.0) and **speculative decoding** (off → on, MTP, 3 draft tokens). The bench
+client changed too (`--backend openai` → `--backend vllm`), and
+`--kv-cache-dtype fp8` was dropped.
 
-- The **prefill** improvement (~1.9×; TTFT slope 4.11 → ~1.6–2.2 ms per input
-  token, aggregate prefill ~12k → ~23–31k tok/s) is not spec-decode related, but
-  it cannot be split between engine and checkpoint.
-- The **decode** improvement is entirely spec decode: `median_ITL / TPOT ==
-  spec_accept_len` in all 16 files, step time rose 25–43 % while TPOT per
-  accepted token fell 41–64 %. With spec decode off this stack would most likely
-  be *slower per token* than the 2026-08 run.
-- Nothing in this repo can separate the three factors. The single most
-  informative extra run is **Qwen 3.8 on 0.32 with speculative decoding
-  disabled**; the second is **Qwen 3.6 on 0.32**.
+- **The GPU change dominates.** Aggregate mean total tok/s 5,545 → 8,329 (+50 %),
+  but **per GPU 5,545 → 4,165 (−27 %)**. Any statement of the form "the new stack
+  is 50 % faster" must say "on twice the hardware".
+- The **prefill** improvement (~1.9× aggregate; TTFT slope 4.11 → ~1.6–2.2 ms per
+  input token) is roughly what DP=2 alone predicts, so this dataset contains **no
+  evidence of an engine-level prefill gain**.
+- The **decode** improvement is speculative decoding plus a much smaller resident
+  batch per rank: `median_ITL / TPOT == spec_accept_len` in all 16 files, step
+  time rose 25–43 % while TPOT per accepted token fell 41–64 %.
+- Nothing in this repo can separate the four factors. The informative extra runs
+  are **Qwen 3.8 on 0.32 on one GPU**, then the same with **speculative decoding
+  disabled**, then **Qwen 3.6 on 0.32 on one GPU**.
 
 ## Statistics
 
@@ -84,19 +87,22 @@ tokens) at the same time. The bench client changed too (`--backend openai` →
 
 ## What to fix first
 
-1. **Recover and commit the 2026-11 serve config** (`bench/serve/qwen3.8-27b.yml`)
-   — including `max_num_seqs` / `max_num_batched_tokens` and the speculative
-   decoding config. Also check the server startup line `Maximum concurrency for
-   262,144 tokens: X.Xx`: in-flight decode concurrency fell from ~84 to ~55 and is
-   pinned in a 49–58 band across a 16× workload range, which looks like a
-   scheduler cap rather than memory pressure (at in128/out2045, 55 sequences hold
-   only ~121k KV tokens against a 262k-token context).
-2. **Re-run the 2026-11 sweep with `bench/run.sh`, ≥3 repeats**, so it is
-   comparable to the harness in this repo and has a variance estimate.
-3. **Add the spec-decode-off run** to attribute the decode win.
-4. Re-run GPT-OSS and Gemma on a current vLLM with the **modern** result format,
+1. **Re-run Qwen 3.8 on vLLM 0.32 on ONE GPU** (`--data-parallel-size 1`). Until
+   that exists, the honest reading is: as deployed +50 % throughput, **per GPU
+   −27 %**.
+2. **Then the same with `--speculative-config` removed**, to separate engine gain
+   from MTP gain.
+3. **Restore `--kv-cache-dtype fp8`** and re-measure. In-flight decode concurrency
+   is ~27 sequences per DP rank where the single-GPU 2026-08 run held ~84; KV
+   bytes per token roughly doubled when fp8 KV was dropped, and MTP adds 3 draft
+   slots per sequence. Check the startup block per rank: `GPU KV cache size: N
+   tokens` / `Maximum concurrency for 262,144 tokens: X.Xx`. (`--max_num_seqs`
+   969 rules out a sequence-count cap.)
+4. **Re-run the sweep with `bench/run.sh`, ≥3 repeats**, so it is comparable to
+   the harness in this repo and has a variance estimate.
+5. Re-run GPT-OSS and Gemma on a current vLLM with the **modern** result format,
    so all models have `out_tok_s` + TTFT/TPOT.
-5. Recover and commit the Gemma checkpoint id and serve flags.
+6. Recover and commit the Gemma checkpoint id and serve flags.
 6. Add ≥3 repeats per scenario across the board and report spread.
 7. Capture `_env.txt` (GPU, driver, image, `/v1/models`) for every run —
    `bench/run.sh` does this automatically now, which is why the 2026-11 run's

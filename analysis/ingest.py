@@ -34,6 +34,8 @@ COLUMNS = [
     "tpot_mean_ms", "tpot_p99_ms", "itl_mean_ms", "itl_p99_ms",
     # speculative decoding: None unless the server ran with a draft method
     "itl_median_ms", "spec_accept_len", "spec_accept_rate",
+    # GPU count for the run, from the manifest - throughput must be divided by it
+    "gpus",
 ]
 
 SCENARIO_RE = re.compile(r"in(\d+)_out(\d+)")
@@ -144,6 +146,7 @@ def normalise(run: dict, path: Path, payload: dict) -> dict:
     return {
         "run_id": run["run_id"], "model": run["model"], "label": run["label"],
         "date": run["date"], "repeats": run.get("repeats", 1), "src_format": fmt,
+        "gpus": run.get("gpus", 1),
         "source_file": str(path.relative_to(ROOT)),
         "in_len": in_len, "out_len": out_len, **row,
     }

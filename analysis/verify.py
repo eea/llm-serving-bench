@@ -43,6 +43,8 @@ def main() -> int:
     check(len(run_ids) == len(set(run_ids)), "manifest run_ids unique")
     for run in manifest["runs"]:
         check((ROOT / run["dir"]).is_dir(), f"run dir exists: {run['dir']}")
+        check(isinstance(run.get("gpus", 1), int) and run.get("gpus", 1) >= 1,
+              f"run {run['run_id']}: gpus is a positive integer")
     for entry in manifest.get("excluded", []):
         check((ROOT / entry["path"]).exists(), f"excluded path exists: {entry['path']}")
 
@@ -96,7 +98,7 @@ def main() -> int:
           "run `make report` and commit")
 
     expected_lb = json.dumps(report.leaderboard_json(
-        agg, {r["model"]: r["label"] for r in manifest["runs"]}), indent=2) + "\n"
+        agg, {r["model"]: r["label"] for r in manifest["runs"]}, manifest), indent=2) + "\n"
     lb_path = ROOT / "data" / "leaderboard.json"
     check(lb_path.exists() and lb_path.read_text() == expected_lb,
           "data/leaderboard.json matches the data", "run `make report` and commit")

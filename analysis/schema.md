@@ -12,6 +12,7 @@ One row = one (run, input length, output length) measurement.
 | `label` | display name used in tables | from the manifest |
 | `date` | ISO date of the run | from the manifest |
 | `repeats` | runs captured for this entry | 1 today → no variance estimate |
+| `gpus` | GPUs the server used, from `results/manifest.json` | **divide throughput by this before comparing runs** (the 2026-11 run used 2, the 2026-08 runs used 1) |
 | `src_format` | `legacy` \| `modern` | which vLLM bench output version produced it |
 | `source_file` | repo-relative path to the raw JSON | immutable |
 | `in_len` / `out_len` | requested prompt / generation lengths | parsed from `in<N>_out<N>` in the file name |

@@ -9,28 +9,36 @@
     {
       "model": "gemma",
       "label": "Gemma",
+      "gpus": 1,
       "avg_total_tok_s": 2424.1,
+      "avg_total_tok_s_per_gpu": 2424.1,
       "avg_req_s": 2.314,
       "avg_out_tok_s": 1062.0
     },
     {
       "model": "gpt-oss-120b",
       "label": "GPT-OSS 120B",
+      "gpus": 1,
       "avg_total_tok_s": 6093.1,
+      "avg_total_tok_s_per_gpu": 6093.1,
       "avg_req_s": 4.599,
       "avg_out_tok_s": 2228.8
     },
     {
       "model": "qwen3.6-27b-fp8",
       "label": "Qwen 27B",
+      "gpus": 1,
       "avg_total_tok_s": 5545.3,
+      "avg_total_tok_s_per_gpu": 5545.3,
       "avg_req_s": 4.939,
       "avg_out_tok_s": 2239.7
     },
     {
       "model": "qwen3.8-27b",
       "label": "Qwen 3.8 27B (0.32+MTP)",
+      "gpus": 2,
       "avg_total_tok_s": 8328.8,
+      "avg_total_tok_s_per_gpu": 4164.4,
       "avg_req_s": 6.917,
       "avg_out_tok_s": 3188.8
     }

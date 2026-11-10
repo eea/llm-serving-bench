@@ -70,13 +70,17 @@ one more reason the 2026-11 delta is a **stack** delta, not a model delta.
 1. Same vLLM version and same serve flags (chunked prefill, KV cache dtype,
    `--max-model-len`, `--gpu-memory-utilization`, speculative decoding on/off,
    `--max-num-seqs`) — these change throughput more than the model often does.
-2. Same GPU, same concurrency, same warm-up policy.
+2. **Same number of GPUs**, same concurrency, same warm-up policy. If that is not
+   possible, divide throughput by GPU count before comparing (`Avg tok/s / GPU` in
+   the summary table; the count lives in `results/manifest.json` under `gpus`).
+   Doubling the hardware is not an optimisation.
 3. ≥3 repeats per scenario, reported with spread.
 4. Both `total_tok_s` and `out_tok_s` reported, so prefill and decode are
-   separable.
+   separable, and the speculative-decoding state reported (`spec_accept_len`),
+   because it changes what `tpot_*` and `itl_*` measure.
 
-Only the Qwen run in this repo satisfies (1) well enough to audit; the other two
-runs have no recorded serve flags. See [caveats.md](caveats.md).
+The two Qwen runs in this repo are the only auditable ones, and they differ in GPU
+count (1 vs 2). See [caveats.md](caveats.md).
 
 ## Re-running
 

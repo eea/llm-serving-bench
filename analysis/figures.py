@@ -157,7 +157,8 @@ def main() -> int:
                       rotation=60, ha="right", fontsize=7)
         ax.set_ylabel("requests generating at the same instant")
         ax.set_title("In-flight decode concurrency = out_tok_s x TPOT\n"
-                     "below 100 means the scheduler, not the client, is the limit", fontsize=10)
+                     "aggregate over all DP ranks; below 100 means the server, not the "
+                     "client, is the limit", fontsize=10)
         ax.legend(fontsize=7)
 
         ax = axes[1]
